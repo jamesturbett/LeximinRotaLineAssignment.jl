@@ -5,7 +5,7 @@ LICENSE: PolyForm Noncommercial 1.0.0
 Resident doctors rank all starting lines in the generic work schedule in descending order of preference. A leximin-optimal assignment is found, with ties broken between equally optimal solutions through the introduction of random noise.
 
 - **HiGHS** solver
-- **JuMP (Julia)** modelling language for mathematical optimisation, with **MultiObjectiveAlgorithms.jl**
+- **JuMP (Julia)** modelling language for mathematical optimisation
 
 ## Quick Start
 
