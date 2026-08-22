@@ -28,6 +28,7 @@ Computes a balanced, leximin-optimal assignment of resident doctors to rota line
 """
 function assign_residents_to_lines(preferences, rng = Random.default_rng())
     num_residents, num_lines = size(preferences)
+    all(isperm, eachrow(preferences)) || throw(ArgumentError("Each resident's preferences must be a permutation of line IDs 1:$num_lines."))
 
     # Normalize RNG: accepts either an integer seed or an existing AbstractRNG instance
     rng = rng isa Integer ? Random.Xoshiro(rng) : rng
