@@ -11,66 +11,52 @@ export assign_residents_to_lines
 Computes a balanced, leximin-optimal assignment of resident doctors to rota lines.
 
 # Arguments
-- `preferences`: An \$N \\times M\$ matrix where row `r` lists line IDs (`1:M`) 
-  in order of preference (column 1 is 1st choice, column \$M\$ is \$M\$-th choice).
+- `preferences`: An \$N \\times L\$ matrix where row \$r\$ lists rota lines (`1:L`) 
+  in order of resident \$r\$'s preference (column 1 is 1st choice, column \$L\$ is \$L\$-th choice).
 - `rng`: Optional `Random.AbstractRNG` or integer seed for deterministic tie-breaking. 
   Defaults to `Random.default_rng()`.
 
 # Mathematical Guarantees
 1. **Leximin Fairness:** Sequentially minimizes the number of residents assigned to their
-   worst choice (\$M\$-th), \$(M-1)\$-th, down to 2nd choice (which automatically maximizes 1st choices).
-2. **Equitable Balancing:** Line loads are strictly bounded between `⌊N/M⌋` and `⌈N/M⌉`.
+   worst choice (\$L\$-th), \$(L-1)\$-th, down to 2nd choice (which automatically maximizes 1st choices).
+2. **Equitable Balancing:** Line loads are strictly bounded between `⌊N/L⌋` and `⌈N/L⌉`.
 3. **Unbiased Tie-Breaking:** If multiple assignments share the exact same optimal leximin profile,
    ties are broken via random linear perturbation across extreme points of the optimal face.
 
 # Returns
-- `Vector{Int}`: Assigned rota line ID (`1:M`) for each resident (`1:N`).
+- `Vector{Int}`: Assigned rota line ID (`1:L`) for each resident (`1:N`).
 """
 function assign_residents_to_lines(preferences, rng = Random.default_rng())
-    num_residents, num_lines = size(preferences)
-    all(isperm, eachrow(preferences)) || throw(ArgumentError("Each resident's preferences must be a permutation of line IDs 1:$num_lines."))
-
-    # Normalize RNG: accepts either an integer seed or an existing AbstractRNG instance
+    N, L = size(preferences)
+    all(isperm, eachrow(preferences)) || throw(ArgumentError("Each row of preferences must be a permutation of line IDs 1:$L."))
     rng = rng isa Integer ? Random.Xoshiro(rng) : rng
 
-    # Initialize the HiGHS optimizer with console output silenced
     model = Model(HiGHS.Optimizer)
     set_silent(model)
 
-    # Binary decision variable: assigned[r, l] == 1 iff resident r is assigned to line l
-    @variable(model, assigned[1:num_residents, 1:num_lines], Bin)
+    # Binary decision variable: x[r, l] == 1 iff resident r is assigned to line l
+    @variable(model, x[1:N, 1:L], Bin)
 
-    # Constraint 1: Each resident must be assigned to exactly one rota line
-    @constraint(model, [resident in 1:num_residents], 
-        sum(assigned[resident, line] for line in 1:num_lines) == 1
-    )
+    # Each resident is assigned to exactly one rota line
+    @constraint(model, [r in 1:N], sum(x[r, l] for l in 1:L) == 1)
 
-    # Constraint 2: Balanced capacities across all lines (bounded between ⌊N/M⌋ and ⌈N/M⌉)
-    @constraint(model, [line in 1:num_lines], 
-        div(num_residents, num_lines) <= sum(assigned[resident, line] for resident in 1:num_residents) <= cld(num_residents, num_lines)
-    )
+    # Balanced capacities across all lines (bounded between ⌊N/L⌋ and ⌈N/L⌉)
+    @constraint(model, [l in 1:L], div(N, L) <= sum(x[r, l] for r in 1:N) <= cld(N, L))
 
-    # Leximin optimization stages:
-    # Sequentially minimize choice counts from worst (num_lines) down to 2nd choice.
-    # Minimizing choices M down to 2 automatically maximizes 1st-choice assignments.
-    for rank in num_lines:-1:2
-        # Count residents receiving their line choice at this rank
-        count_at_rank = sum(assigned[resident, preferences[resident, rank]] for resident in 1:num_residents)
-        
-        @objective(model, Min, count_at_rank)
+    # Leximin optimization: sequentially minimize resident counts at worst choice (L) down to 2nd choice
+    for k in L:-1:2
+        count_k = sum(x[r, preferences[r, k]] for r in 1:N)
+        @objective(model, Min, count_k)
         optimize!(model)
-        
-        # Lock the exact minimum count achieved as a hard upper bound for subsequent stages
-        @constraint(model, count_at_rank <= round(Int, objective_value(model)))
+        @constraint(model, count_k <= round(Int, objective_value(model)))
     end
 
-    # Tie-breaking stage:
-    # Break remaining ties over the optimal leximin face using random linear perturbation
-    @objective(model, Min, sum(rand(rng) * assigned[resident, line] for resident in 1:num_residents, line in 1:num_lines))
+    # Unbiased tie-breaker over the optimal leximin face
+    @objective(model, Min, sum(rand(rng) * x[r, l] for r in 1:N, l in 1:L))
     optimize!(model)
 
-    # Extract the assigned line ID (1:num_lines) for each resident (1:num_residents)
-    return [argmax(line -> value(assigned[resident, line]), 1:num_lines) for resident in 1:num_residents]
+    # Extract the assigned line ID (1:L) for each resident (1:N)
+    return [argmax(l -> value(x[r, l]), 1:L) for r in 1:N]
 end
 
 end # module
