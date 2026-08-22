@@ -39,17 +39,18 @@ function assign_residents_to_lines(
     set_silent(model)
     set_attribute(model, MOA.Algorithm(), MOA.Lexicographic())
     set_attribute(model, MOA.LexicographicAllPermutations(), false)
-    set_attribute(model, MOA.AbsoluteTolerance(), 1e-5)
-    set_attribute(model, MOA.RelativeTolerance(), 1e-5)
 
-    # 4. Variables & Constraints
+    # 4. Decision variables & constraints
     @variable(model, assignment[1:num_residents, 1:num_lines], Bin)
 
-    @constraint(model, [r in 1:num_residents], sum(assignment[r, :]) == 1)
-    @constraint(model, [l in 1:num_lines], sum(assignment[:, l]) <= max_capacity)
-    if min_capacity > 0
-        @constraint(model, [l in 1:num_lines], sum(assignment[:, l]) >= min_capacity)
-    end
+    # Each resident gets exactly one starting line
+    @constraint(model, [r in 1:num_residents], 
+        sum(assignment[r, l] for l in 1:num_lines) == 1
+    )
+    # Balanced line capacity (interval constraint)
+    @constraint(model, [l in 1:num_lines], 
+        min_capacity <= sum(assignment[r, l] for r in 1:num_residents) <= max_capacity
+    )
 
     # 5. Leximin Objectives (worst choice down to 2nd choice + tie-breaker)
     rank_counts = [
