@@ -1,13 +1,17 @@
 module LeximinRotaLineAssignment
 
-using JuMP, HiGHS, Random
+using JuMP, Random
+import HiGHS
 
 export assign_residents_to_lines
 
-function assign_residents_to_lines(preferences, rng = Random.default_rng())
+function assign_residents_to_lines(
+    preferences,
+    rng = Random.default_rng();
+    seed = nothing,
+)
     N, M = size(preferences)
-    (N == 0 || M == 0) && return Int[]
-    active_rng = rng isa Integer ? Random.Xoshiro(rng) : rng
+    active_rng = (s = something(seed, rng)) isa Integer ? Random.Xoshiro(s) : s
 
     model = Model(HiGHS.Optimizer)
     set_silent(model)
